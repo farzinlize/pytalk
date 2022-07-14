@@ -1,4 +1,4 @@
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM, gethostname
 import sys
 
 NUM_SIZE = 4
@@ -11,7 +11,7 @@ def int_to_bytes(i, int_size=NUM_SIZE, signed=False):
     return i.to_bytes(int_size, 'big', signed=False)
 
 server = socket(AF_INET, SOCK_STREAM)
-server.bind(('127.0.0.1', int(sys.argv[1])))
+server.bind(("0.0.0.0", int(sys.argv[1])))
 server.listen(1)
 
 print(f"I'm up! lets hear from anyone on port:{sys.argv[1]}")
