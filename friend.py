@@ -1,21 +1,16 @@
 import sys
 from socket import socket
-
-NUM_SIZE = 4
-
-def bytes_to_int(b :bytes):
-    return int.from_bytes(b, 'big', signed=False)
-
-
-def int_to_bytes(i, int_size=NUM_SIZE, signed=False):
-    return i.to_bytes(int_size, 'big', signed=False)
+from common import IS_TXT, IS_FILE, HELP_MSG, read_protocol, send_protocol
 
 talky = socket()
 talky.connect((sys.argv[1], int(sys.argv[2])))
 
-talky.send(int_to_bytes(2))
-talky.send(b"hi")
+while True:
+    command = input("[here] enter a command (h for help): ")
+    if   command in ['h', 'help']:print(HELP_MSG)
+    elif command in ['r', 'receive']:read_protocol(talky)
+    elif command in ['sf', 'send file']:send_protocol(talky, IS_FILE, input("(file name or address?)"))
+    elif command in ['sx', 'send txt']:send_protocol(talky, IS_TXT, input("(message?)"))
+    elif command in ['e', 'exit']:break
 
-i = bytes_to_int(talky.recv(4))
-print(talky.recv(i))
-
+print("communication's over see you next time")
