@@ -30,7 +30,7 @@ def read_protocol(other:socket):
 
     def read_txt():
         txt_size = bytes_to_int(other.recv(NUM_SIZE))
-        return f"[message]: {other.recv(txt_size)}"
+        return f"[message]: {str(other.recv(txt_size), encoding=ENCODING)}"
         
     operation = {IS_FILE:read_file, IS_TXT:read_txt}
 
@@ -54,5 +54,6 @@ def send_protocol(other:socket, what, content):
 
     operation = {IS_FILE:send_file, IS_TXT:send_txt}
 
+    other.send(what)
     try:print(operation[what](content))
     except Exception as err:print(f"[SEND_ERR] {err}")
