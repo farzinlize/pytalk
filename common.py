@@ -44,6 +44,7 @@ def send_protocol(other:socket, what, content):
         other.send(int_to_bytes(len(name)))
         other.send(bytes(name, encoding=ENCODING))
         with open(name, 'rb') as other_file:data = other_file.read()
+        other.send(int_to_bytes(len(data)))
         other.sendall(data)
         return f"(successfully sent file `{name}`)"
 
