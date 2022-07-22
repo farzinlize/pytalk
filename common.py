@@ -7,7 +7,7 @@ IS_TXT = b'\x00'
 IS_FILE = b'\x01'
 IS_DIR = b'\x02'
 
-DEFAULT_DIRECTORY = 'temp'
+DEFAULT_DIRECTORY = 'temp/'
 
 HELP_MSG = "Talky program is here to help you communicate fast inside network with all you devices\n" \
            "    list of commands:\n" \
@@ -21,11 +21,11 @@ def int_to_bytes(i, int_size=NUM_SIZE, signed=False):return i.to_bytes(int_size,
 
 def read_protocol(other:socket):
 
-    def read_file(save_to=""):
+    def read_file():
         name_size = bytes_to_int(other.recv(NUM_SIZE))
         name = str(other.recv(name_size), encoding=ENCODING)
         file_size = bytes_to_int(other.recv(NUM_SIZE))
-        with open(save_to + name, 'wb') as other_file:
+        with open(name, 'wb') as other_file:
             while file_size:
                 chunk = other.recv(file_size)
                 other_file.write(chunk)
@@ -33,9 +33,7 @@ def read_protocol(other:socket):
         return f"(successfully received file `{name}`)"
 
     def read_directory():
-        name_size = bytes_to_int(other.recv(NUM_SIZE))
-        name = str(other.recv(name_size), encoding=ENCODING)
-        for i in range(bytes_to_int(other.recv(NUM_SIZE))):read_file(save_to=name)
+        for i in range(bytes_to_int(other.recv(NUM_SIZE))):read_file()
 
     def read_txt():
         txt_size = bytes_to_int(other.recv(NUM_SIZE))
@@ -58,11 +56,10 @@ def send_protocol(other:socket, what, content):
         return f"(successfully sent file `{name}`)"
 
     def send_directory(name):
-        other.send(int_to_bytes(len(name)))
-        other.send(bytes(name, encoding=ENCODING))
+        if not name:name = DEFAULT_DIRECTORY
         to_send = [f for f in os.listdir(name)]
         other.send(int_to_bytes(len(to_send)))
-        for f in to_send:send_file(f)
+        for f in to_send:send_file(name + f)
 
     def send_txt(message):
         other.send(int_to_bytes(len(message)))
