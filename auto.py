@@ -1,7 +1,7 @@
 import sys
 from socket import socket, AF_INET, SOCK_STREAM
 from common import IS_FILE, read_protocol, send_protocol
-from config import AUTO_PORT, translate
+from config import AUTO_PORT
 
 def sender_auto(me, send_to, filename):
     print(f'sending file on auto channel from {me} to {send_to}')
