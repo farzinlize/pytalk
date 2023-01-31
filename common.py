@@ -59,8 +59,11 @@ class ProgressBar:
     
     def __str__(self) -> str:
         s  = self.text%(tell_size(self.now), self.bar(), tell_size(self.speed))
-        s += " " * (os.get_terminal_size()[0] - len(s))
+        s += " " * (os.get_terminal_size()[0] - len(s) - 1)
         return s
+
+    def clear(self):
+        print(" " * os.get_terminal_size()[0])
 
 
 def read_protocol(other:socket):
