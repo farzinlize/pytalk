@@ -1,3 +1,7 @@
 *
 !.gitignore
-!*.py
+
+!talky.py
+!friend.py
+!common.py
+!auto.py
