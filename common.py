@@ -62,9 +62,6 @@ class ProgressBar:
         s += " " * (os.get_terminal_size()[0] - len(s) - 1)
         return s
 
-    def clear(self):
-        print(" " * os.get_terminal_size()[0])
-
 
 def read_protocol(other:socket):
 
@@ -85,7 +82,7 @@ def read_protocol(other:socket):
                 bar.forward(len(chunk), currentTime()-chunk_time)
                 print(bar, end='\r')
 
-        print( f"---- download done "
+        print( f"\n---- download done "
                f"| speed: {tell_size(file_size/(currentTime()-starting_time))}/s")
         return f"(successfully received file `{name}`)"
 
@@ -127,7 +124,7 @@ def send_protocol(other:socket, what, content):
                 chunk = cargo.read(CHUNK_SIZE)
                 print(bar, end='\r')
 
-        print( f"---- upload done "
+        print( f"\n---- upload done "
                f"| speed: {tell_size(cargo_size/(currentTime()-starting_time))}/s")
         return f"(successfully sent file `{name}`)"
 
