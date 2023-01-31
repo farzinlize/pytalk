@@ -7,7 +7,7 @@ CHUNK_SIZE = 500_000 # in bytes (500KB)
 
 BLACK = "█"
 WHITE = "░"
-PROGRESS_BAR_LEN = 10
+PROGRESS_BAR_LEN = 25
 
 NUM_SIZE = 4
 ENCODING = 'utf8'
@@ -28,6 +28,7 @@ def bytes_to_int(b :bytes):return int.from_bytes(b, 'big', signed=False)
 def int_to_bytes(i, int_size=NUM_SIZE, signed=False):return i.to_bytes(int_size, 'big', signed=False)
 
 # turn bytes to human readable sizes (B,KB,MB,GB)
+# maximum 8 character -> XXX.XX?B
 def tell_size(b):
     if   b < 1000            :return f"{b}B"
     elif b < 1000_000        :return f"{round(b/1000, 2)}KB"
@@ -36,17 +37,28 @@ def tell_size(b):
 
 
 class ProgressBar:
-    def __init__(self, total_size, length, initial=0) -> None:
+    def __init__(self, total_size, initial=0) -> None:
         self.size = total_size
-        self.l = length
         self.now = initial
-    
-    def forward(self, how_many):
-        pass
 
+        terminal = os.get_terminal_size()[0]
+        if terminal >= 48:
+            self.text = "[transmission: %s | %s | speed: %s/s]\r" # 31 character + 16 + X = terminal
+            self.bar_len = terminal - 47
+        else:
+            self.text = "[t:%s|%s|s:%s/s]\r" # 10 character + 16 + X = terminal
+            self.bar_len = terminal - 26
+    
+    def forward(self, how_many_byte, how_much_time):
+        self.now += how_many_byte
+        self.speed = how_many_byte / how_much_time
+
+    def bar(self) -> str:
+        B = self.bar_len * self.now // self.size
+        return BLACK * B + WHITE * (self.bar_len - B)
+    
     def __str__(self) -> str:
-        B = self.l * self.now // self.size
-        return BLACK * B + WHITE * (self.l - B)
+        return self.text%(str(self.now), self.bar, str(tell_size(self.speed)))
 
 
 def read_protocol(other:socket):
@@ -55,24 +67,21 @@ def read_protocol(other:socket):
         name_size = bytes_to_int(other.recv(NUM_SIZE))
         name = str(other.recv(name_size), encoding=ENCODING)
         file_size = bytes_to_int(other.recv(NUM_SIZE))
-        bar = ProgressBar(file_size, PROGRESS_BAR_LEN)
-        total_down = 0
-        starting_time = currentTime()
+        bar = ProgressBar(file_size)
         print(f"--> downloading file {name} (size: {tell_size(file_size)})")
+        starting_time = currentTime()
         with open(name, 'wb') as other_file:
-            while file_size:
+            remaining = file_size
+            while remaining:
                 chunk_time = currentTime()
-                chunk = other.recv(file_size)
+                chunk = other.recv(remaining)
                 other_file.write(chunk)
-                file_size -= len(chunk)
-                total_down += len(chunk)
-                bar.forward(len(chunk))
-                print(f"download size: {tell_size(total_down)} | {bar} |"
-                    f" speed: {tell_size(len(chunk)/(currentTime()-chunk_time))}/s"
-                    , end='\r')
+                remaining -= len(chunk)
+                bar.forward(len(chunk), currentTime()-chunk_time)
+                print(bar)
 
         print( f"---- download done "
-               f"| speed: {tell_size(total_down/(currentTime()-starting_time))}/s")
+               f"| speed: {tell_size(file_size/(currentTime()-starting_time))}/s")
         return f"(successfully received file `{name}`)"
 
     def read_directory():
@@ -104,18 +113,14 @@ def send_protocol(other:socket, what, content):
             print(f"<-- upstreaming file {name} (size: {tell_size(cargo_size)})")
             cargo.seek(0, 0)
             chunk = cargo.read(CHUNK_SIZE)
-            total_up = 0
-            bar = ProgressBar(cargo_size, PROGRESS_BAR_LEN)
+            bar = ProgressBar(cargo_size)
             starting_time = currentTime()
             while len(chunk) != 0:
                 chunk_time = currentTime()
                 other.sendall(chunk)
-                total_up += len(chunk)
-                bar.forward(len(chunk))
+                bar.forward(len(chunk), currentTime()-chunk_time)
                 chunk = cargo.read(CHUNK_SIZE)
-                print(f"upload size: {tell_size(total_up)} | {bar} |"
-                    f" speed: {tell_size(len(chunk)/(currentTime()-chunk_time))}/s"
-                    , end='\r')
+                print(bar)
 
         print( f"---- upload done "
                f"| speed: {tell_size(cargo_size/(currentTime()-starting_time))}/s")
