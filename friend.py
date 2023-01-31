@@ -1,8 +1,8 @@
 import sys
 from socket import socket
-from common import IS_TXT, IS_FILE, HELP_MSG, communication_loop, read_protocol, send_protocol
+from common import communication_loop
 
 talky = socket()
-talky.connect((sys.argv[1], int(sys.argv[2])))
+talky.connect((sys.argv[1], int(sys.argv[2]))) # ip and port addresses are expected 
 
 communication_loop(talky)
