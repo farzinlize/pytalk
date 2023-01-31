@@ -58,7 +58,7 @@ class ProgressBar:
         return BLACK * B + WHITE * (self.bar_len - B)
     
     def __str__(self) -> str:
-        return self.text%(str(self.now), self.bar, str(tell_size(self.speed)))
+        return self.text%(tell_size(self.now), self.bar(), tell_size(self.speed))
 
 
 def read_protocol(other:socket):
