@@ -42,12 +42,12 @@ class ProgressBar:
         self.now = initial
 
         terminal = os.get_terminal_size()[0]
-        if terminal >= 48:
-            self.text = "[transmission: %s | %s | speed: %s/s]\r" # 31 character + 16 + X = terminal
-            self.bar_len = terminal - 47
+        if terminal >= 49:
+            self.text = "[transmission: %s | %s | speed: %s/s]" # 31 character + 16 + X = terminal
+            self.bar_len = terminal - 48
         else:
-            self.text = "[t:%s|%s|s:%s/s]\r" # 10 character + 16 + X = terminal
-            self.bar_len = terminal - 26
+            self.text = "[t:%s|%s|s:%s/s]" # 10 character + 16 + X = terminal
+            self.bar_len = terminal - 27
     
     def forward(self, how_many_byte, how_much_time):
         self.now += how_many_byte
@@ -58,7 +58,9 @@ class ProgressBar:
         return BLACK * B + WHITE * (self.bar_len - B)
     
     def __str__(self) -> str:
-        return self.text%(tell_size(self.now), self.bar(), tell_size(self.speed))
+        s  = self.text%(tell_size(self.now), self.bar(), tell_size(self.speed))
+        s += " " * (os.get_terminal_size()[0] - len(s))
+        return s
 
 
 def read_protocol(other:socket):
@@ -78,7 +80,7 @@ def read_protocol(other:socket):
                 other_file.write(chunk)
                 remaining -= len(chunk)
                 bar.forward(len(chunk), currentTime()-chunk_time)
-                print(bar)
+                print(bar, end='\r')
 
         print( f"---- download done "
                f"| speed: {tell_size(file_size/(currentTime()-starting_time))}/s")
@@ -120,7 +122,7 @@ def send_protocol(other:socket, what, content):
                 other.sendall(chunk)
                 bar.forward(len(chunk), currentTime()-chunk_time)
                 chunk = cargo.read(CHUNK_SIZE)
-                print(bar)
+                print(bar, end='\r')
 
         print( f"---- upload done "
                f"| speed: {tell_size(cargo_size/(currentTime()-starting_time))}/s")
