@@ -40,7 +40,9 @@ class ProgressBar:
     def __init__(self, total_size, initial=0) -> None:
         self.size = total_size
         self.now = initial
+        self.line_check()
 
+    def line_check(self):
         terminal = os.get_terminal_size()[0]
         if terminal >= 49:
             self.text = "[transmission: %s | %s | speed: %s/s]" # 31 character + 16 + X = terminal
@@ -48,7 +50,8 @@ class ProgressBar:
         else:
             self.text = "[t:%s|%s|s:%s/s]" # 10 character + 16 + X = terminal
             self.bar_len = terminal - 27
-    
+
+
     def forward(self, how_many_byte, how_much_time):
         self.now += how_many_byte
         self.speed = how_many_byte / how_much_time
