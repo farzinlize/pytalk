@@ -1,3 +1,4 @@
+import signal
 from socket import socket
 from time import time as currentTime
 from time import strftime, gmtime
@@ -98,8 +99,20 @@ def read_protocol(other:socket):
         
     operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory}
 
-    try:print(operation[other.recv(1)]())
-    except Exception as err:print(f"[READ_ERR] {err}")
+    # set timer
+    signal.setitimer(signal.ITIMER_REAL, 1, 0)
+
+    # check for data on the line
+    try:first_byte = other.recv(1)
+    except Exception as catch:
+        if isinstance(catch, TimerException):print("[TIMEOUT] nothing to read");return
+        else:print("[READ_ERR]", catch)
+
+    # timer off
+    signal.setitimer(signal.ITIMER_REAL, 0, 0)
+
+    try:print(operation[first_byte]())
+    except Exception as err:print("[READ_ERR]", {err})
 
 
 def send_protocol(other:socket, what, content):
@@ -148,8 +161,12 @@ def send_protocol(other:socket, what, content):
     try:print(operation[what](content))
     except Exception as err:print(f"[SEND_ERR] {err}")
 
+class TimerException(Exception):pass
+def raise_function(input):raise TimerException(f"timer exception ({input})")
 
 def communication_loop(other):
+    print("signal is on")
+    signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
     while True:
         command = input("[here] enter a command (h for help): ")
         if   command in ['h', 'help']:print(HELP_MSG)
