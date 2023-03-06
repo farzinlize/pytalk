@@ -185,22 +185,33 @@ def udp_sendfile(filename, main_channel:socket, udp_address:tuple[str, int]):
 
             # report ending or remove waitlist item
             if recived_ack == chunk_count:return True
-            waitlist.remove(recived_ack)
 
-    def push_chunk(chunk_id, repeated=False):
+            # remove page from waitlist and calculate speed
+            for w in waitlist:
+                if w[0] == recived_ack:
+                    bar.forward(UDP_CHUNK_SIZE, currentTime()-w[1])
+                    waitlist.remove(w)
+                    break
+            else:print(f"[WARNING] didn't expect {recived_ack} chunk_id")
+
+    def push_chunk(chunk_id, repeated=None):
+        if not repeated:waitlist.append((chunk_id, currentTime())) # new entry
+        else           :waitlist[i] = (chunk_id, currentTime())    # update time
         cargo.seek(chunk_id*UDP_CHUNK_SIZE, 0)
         udp_channel.sendto(int_to_bytes(chunk_id) + cargo.read(UDP_CHUNK_SIZE), udp_address)
-        if not repeated:waitlist.append(chunk_id)
 
     udp_channel = socket(AF_INET, SOCK_DGRAM)
     end = False
 
     with open(filename, 'rb') as cargo:
         
+        starting_time = currentTime()
         cargo_size = cargo.seek(0, 2)
+        bar = ProgressBar(cargo_size)
         chunk_count = (cargo_size+UDP_CHUNK_SIZE-1) // UDP_CHUNK_SIZE
 
         # send information through main channel
+        main_channel.send(int_to_bytes(cargo_size))
         main_channel.send(int_to_bytes(len(filename)))
         main_channel.send(bytes(filename, encoding=ENCODING))
         main_channel.send(int_to_bytes(chunk_count))
@@ -223,36 +234,46 @@ def udp_sendfile(filename, main_channel:socket, udp_address:tuple[str, int]):
 
             # repeat-all with ack-flush
             elif len(waitlist) == MAXIMUM_SIZE_WAITLIST:
-                for stucked in waitlist:push_chunk(stucked, repeated=True)
+                for i, stucked in enumerate(waitlist):push_chunk(stucked[0], repeated=i)
                 end = ack_flush()
+
+            print(bar, end='\r')
 
         # finishing cargo repeat waitlist until done 
         while len(waitlist) != 0 and not end:
-            for stucked in waitlist:push_chunk(stucked, repeated=True)
+            for i, stucked in enumerate(waitlist):push_chunk(stucked[0], repeated=i)
             end = ack_flush()
-    print("[UDP] file is safely transfered")
+            print(bar, end='\r')
+
+    print( f"\n---- upload done "
+               f"| speed: {tell_size(cargo_size/(currentTime()-starting_time))}/s")
 
 
 def udp_recivefile(main_channel:socket, port):
 
     # safe check from main channel
     # read 4 bytes for converting to number
-    first_bytes = safe_start_read(main_channel, many=4)
+    first_bytes = safe_start_read(main_channel, many=NUM_SIZE)
     if not first_bytes:print("[NO_READ] ... back to console");return
+
+    starting_time = currentTime()
 
     udp_channel = socket(AF_INET, SOCK_DGRAM)
     udp_channel.bind(("0.0.0.0", port))
 
     # recive information through main channel
-    filename_len = bytes_to_int(first_bytes)
+    cargo_size = bytes_to_int(first_bytes)
+    filename_len = bytes_to_int(main_channel.recv(NUM_SIZE))
     filename = str(main_channel.recv(filename_len), encoding=ENCODING)
-    cargo = open(filename, 'wb')
     chunk_count = bytes_to_int(main_channel.recv(NUM_SIZE))
 
+    cargo = open(filename, 'wb')
+    bar = ProgressBar(cargo_size)
     chunk_download = [False for _ in range(chunk_count)]
     recived_chunk_count = 0
 
     while recived_chunk_count < chunk_count:
+        chunk_time = currentTime()
         data, _ = udp_channel.recvfrom(UDP_CHUNK_SIZE+NUM_SIZE)
         chunk_id = bytes_to_int(data[:NUM_SIZE])
 
@@ -263,12 +284,16 @@ def udp_recivefile(main_channel:socket, port):
             recived_chunk_count += 1            
             cargo.seek(chunk_id * UDP_CHUNK_SIZE, 0)
             cargo.write(data[NUM_SIZE:])
+            bar.forward(len(data)-NUM_SIZE, currentTime() - chunk_time)
+
+        print(bar, end='\r')
     
+    print( f"\n---- download done "
+               f"| speed: {tell_size(cargo_size/(currentTime()-starting_time))}/s")
     print(f"[UDP] all {chunk_count} chunks are downloaded")
     main_channel.send(int_to_bytes(chunk_count))
     udp_channel.close()
     cargo.close()
-
 
 # # # # # # # # # # # END # # # # # # # # # # # 
 
