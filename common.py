@@ -1,10 +1,12 @@
 import signal
-from socket import socket
+from socket import socket, AF_INET, SOCK_DGRAM
 from time import time as currentTime
 from time import strftime, gmtime
 import os
 
 CHUNK_SIZE = 500_000 # in bytes (500KB)
+UDP_CHUNK_SIZE = 25000
+MAXIMUM_SIZE_WAITLIST = 4
 
 BLACK = "█"
 WHITE = "░"
@@ -99,20 +101,23 @@ def read_protocol(other:socket):
         
     operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory}
 
-    # set timer
-    signal.setitimer(signal.ITIMER_REAL, 1, 0)
-
-    # check for data on the line
-    try:first_byte = other.recv(1)
-    except Exception as catch:
-        if isinstance(catch, TimerException):print("[TIMEOUT] nothing to read");return
-        else:print("[READ_ERR]", catch)
-
-    # timer off
-    signal.setitimer(signal.ITIMER_REAL, 0, 0)
-
+    first_byte = safe_start_read(other)
+    if not first_byte:print("[NO_READ] ... back to console");return
     try:print(operation[first_byte]())
     except Exception as err:print("[READ_ERR]", {err})
+
+
+def safe_start_read(connection:socket, many=1):
+    try:
+        signal.setitimer(signal.ITIMER_REAL, 1, 0)
+        first_byte = connection.recv(many)
+    except Exception as catch:
+        if isinstance(catch, TimerException):print("[SAFE][TIMEOUT] nothing to read")
+        else                                :print("[READ_ERR]", catch)
+        return
+    else:
+        signal.setitimer(signal.ITIMER_REAL, 0, 0)
+        return first_byte
 
 
 def send_protocol(other:socket, what, content):
@@ -164,6 +169,110 @@ def send_protocol(other:socket, what, content):
 class TimerException(Exception):pass
 def raise_function(input):raise TimerException(f"timer exception ({input})")
 
+# # # # # # # # # # # UDP # # # # # # # # # # # 
+#                                             #
+#    handle file transfer using UDP socket    #
+#                                             #
+# # # # # # # # # # # UDP # # # # # # # # # # # 
+def udp_sendfile(filename, main_channel:socket, udp_address:tuple[str, int]):
+
+    def ack_flush():
+        while True:
+            signal.setitimer(signal.ITIMER_REAL, 0.1, 0)
+            try:recived_ack = bytes_to_int(main_channel.recv(NUM_SIZE))
+            except TimerException as _:return False
+            signal.setitimer(signal.ITIMER_REAL, 0, 0)
+
+            # report ending or remove waitlist item
+            if recived_ack == chunk_count:return True
+            waitlist.remove(recived_ack)
+
+    def push_chunk(chunk_id, repeated=False):
+        cargo.seek(chunk_id*UDP_CHUNK_SIZE, 0)
+        udp_channel.sendto(int_to_bytes(chunk_id) + cargo.read(UDP_CHUNK_SIZE), udp_address)
+        if not repeated:waitlist.append(chunk_id)
+
+    udp_channel = socket(AF_INET, SOCK_DGRAM)
+    end = False
+
+    with open(filename, 'rb') as cargo:
+        
+        cargo_size = cargo.seek(0, 2)
+        chunk_count = (cargo_size+UDP_CHUNK_SIZE-1) // UDP_CHUNK_SIZE
+
+        # send information through main channel
+        main_channel.send(int_to_bytes(len(filename)))
+        main_channel.send(bytes(filename, encoding=ENCODING))
+        main_channel.send(int_to_bytes(chunk_count))
+        # # # # # # # # #
+
+        waitlist = []
+        lead_chunk = 0
+
+        # while there is stll cargo
+        while lead_chunk < chunk_count and not end:
+
+            # just push cargo into channel
+            if len(waitlist) < MAXIMUM_SIZE_WAITLIST/2:
+                push_chunk(lead_chunk);lead_chunk+=1
+
+            # push with ack-flush
+            elif len(waitlist) < MAXIMUM_SIZE_WAITLIST:
+                push_chunk(lead_chunk);lead_chunk+=1
+                end = ack_flush()
+
+            # repeat-all with ack-flush
+            elif len(waitlist) == MAXIMUM_SIZE_WAITLIST:
+                for stucked in waitlist:push_chunk(stucked, repeated=True)
+                end = ack_flush()
+
+        # finishing cargo repeat waitlist until done 
+        while len(waitlist) != 0 and not end:
+            for stucked in waitlist:push_chunk(stucked, repeated=True)
+            end = ack_flush()
+    print("[UDP] file is safely transfered")
+
+
+def udp_recivefile(main_channel:socket, port):
+
+    # safe check from main channel
+    # read 4 bytes for converting to number
+    first_bytes = safe_start_read(main_channel, many=4)
+    if not first_bytes:print("[NO_READ] ... back to console");return
+
+    udp_channel = socket(AF_INET, SOCK_DGRAM)
+    udp_channel.bind(("0.0.0.0", port))
+
+    # recive information through main channel
+    filename_len = bytes_to_int(first_bytes)
+    filename = str(main_channel.recv(filename_len), encoding=ENCODING)
+    cargo = open(filename, 'wb')
+    chunk_count = bytes_to_int(main_channel.recv(NUM_SIZE))
+
+    chunk_download = [False for _ in range(chunk_count)]
+    recived_chunk_count = 0
+
+    while recived_chunk_count < chunk_count:
+        data, _ = udp_channel.recvfrom(UDP_CHUNK_SIZE+NUM_SIZE)
+        chunk_id = bytes_to_int(data[:NUM_SIZE])
+
+        # check if not recived more than one time
+        if not chunk_download[chunk_id]:
+            main_channel.send(data[:NUM_SIZE])
+            chunk_download[chunk_id] = True
+            recived_chunk_count += 1            
+            cargo.seek(chunk_id * UDP_CHUNK_SIZE, 0)
+            cargo.write(data[NUM_SIZE:])
+    
+    print(f"[UDP] all {chunk_count} chunks are downloaded")
+    main_channel.send(int_to_bytes(chunk_count))
+    udp_channel.close()
+    cargo.close()
+
+
+# # # # # # # # # # # END # # # # # # # # # # # 
+
+
 def communication_loop(other):
     print("signal is on")
     signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
@@ -171,6 +280,8 @@ def communication_loop(other):
         command = input("[here] enter a command (h for help): ")
         if   command in ['h', 'help']:print(HELP_MSG)
         elif command in ['r', 'receive']:read_protocol(other)
+        elif command in ['ru', 'recive udp']:udp_recivefile(other, int(input("(port?)")))
+        elif command in ['su', 'send udp']:udp_sendfile(input("(file name?)"), other, (input("(ip?)"), int(input("(port?)"))))
         elif command in ['sf', 'send file']:send_protocol(other, IS_FILE, input("(file name or address?)"))
         elif command in ['sd', 'send directory']:send_protocol(other, IS_DIR, input("(enter directory? or press enter for default temp)"))
         elif command in ['sx', 'send txt']:send_protocol(other, IS_TXT, input("(message?)"))
