@@ -6,7 +6,7 @@ import os
 
 CHUNK_SIZE = 500_000 # in bytes (500KB)
 UDP_CHUNK_SIZE = 25000
-MAXIMUM_SIZE_WAITLIST = 4
+MAXIMUM_SIZE_WAITLIST = 10000
 
 BLACK = "█"
 WHITE = "░"
@@ -43,6 +43,7 @@ class ProgressBar:
     def __init__(self, total_size, initial=0) -> None:
         self.size = total_size
         self.now = initial
+        self.speed = 0
         self.line_check()
 
     def line_check(self):
@@ -298,7 +299,7 @@ def udp_recivefile(main_channel:socket, port):
 # # # # # # # # # # # END # # # # # # # # # # # 
 
 
-def communication_loop(other):
+def communication_loop(other:socket):
     print("signal is on")
     signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
     while True:
@@ -312,3 +313,4 @@ def communication_loop(other):
         elif command in ['sx', 'send txt']:send_protocol(other, IS_TXT, input("(message?)"))
         elif command in ['e', 'exit']:break
     print("communication's over see you next time")
+    other.close()
