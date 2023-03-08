@@ -300,7 +300,6 @@ def udp_recivefile(main_channel:socket, port):
 
 
 def communication_loop(other:socket):
-    print("signal is on")
     signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
     while True:
         command = input("[here] enter a command (h for help): ")
