@@ -5,7 +5,7 @@ from time import strftime, gmtime
 import os
 
 CHUNK_SIZE = 500_000 # in bytes (500KB)
-UDP_CHUNK_SIZE = 25000
+UDP_CHUNK_SIZE = 10000
 MAXIMUM_SIZE_WAITLIST = 10000
 
 BLACK = "█"
@@ -179,7 +179,7 @@ def udp_sendfile(filename, main_channel:socket, udp_address:tuple[str, int]):
 
     def ack_flush():
         while True:
-            signal.setitimer(signal.ITIMER_REAL, 0.1, 0)
+            signal.setitimer(signal.ITIMER_REAL, 0.5, 0)
             try:recived_ack = bytes_to_int(main_channel.recv(NUM_SIZE))
             except TimerException as _:return False
             signal.setitimer(signal.ITIMER_REAL, 0, 0)
