@@ -33,9 +33,9 @@ def int_to_bytes(i, int_size=NUM_SIZE, signed=False):return i.to_bytes(int_size,
 # turn bytes to human readable sizes (B,KB,MB,GB)
 # maximum 8 character -> XXX.XX?B
 def tell_size(b):
-    if   b < 1000            :return f"{b}B"
-    elif b < 1000_000        :return f"{round(b/1000, 2)}KB"
-    elif b < 1000_000_000    :return f"{round(b/1000_000, 2)}MB"
+    if   b < 1000            :return f"{round(b,              2)}B"
+    elif b < 1000_000        :return f"{round(b/1000,         2)}KB"
+    elif b < 1000_000_000    :return f"{round(b/1000_000,     2)}MB"
     elif b < 1000_000_000_000:return f"{round(b/1000_000_000, 2)}GB"
 
 
