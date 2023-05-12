@@ -1,5 +1,6 @@
 import signal
 from socket import socket, AF_INET, SOCK_DGRAM
+from subprocess import Popen, PIPE
 from time import time as currentTime
 from time import strftime, gmtime
 import os
@@ -17,6 +18,17 @@ ENCODING = 'utf8'
 IS_TXT = b'\x00'
 IS_FILE = b'\x01'
 IS_DIR = b'\x02'
+SC_TXT = b'\x03'
+SC_FILE = b'\x04'
+
+RUN_C_PARTNER = "csecure"
+CPC_KEYGEN = b"G"
+CPC_SETKEY = b"S"
+CPC_ENCRYPT = b"C"
+CPC_DECRYPT = b"D"
+CPR_OK = b"O"
+CPR_REDO = b"R"
+CPR_ER = b"E"
 
 DEFAULT_DIRECTORY = 'temp/'
 
@@ -58,6 +70,7 @@ class ProgressBar:
 
     def forward(self, how_many_byte, how_much_time):
         self.now += how_many_byte
+        if self.now > self.size:self.now = self.size
         self.speed = how_many_byte / how_much_time
 
     def bar(self) -> str:
@@ -68,13 +81,78 @@ class ProgressBar:
         s  = self.text%(tell_size(self.now), self.bar(), tell_size(self.speed))
         s += " " * (os.get_terminal_size()[0] - len(s) - 1)
         return s
+    
+
+def string_to_bytearray(arg:str) -> bytes:
+    return int_to_bytes(len(arg)) + bytes(arg, encoding=ENCODING)
 
 
-def read_protocol(other:socket):
+class CPartner:
+    def __init__(self) -> None:
+        self.process = Popen(RUN_C_PARTNER, stdin=PIPE, stdout=PIPE)
+    
+    def keygen(self, passphrase:str):
+        self.process.stdin.write(CPC_KEYGEN+string_to_bytearray(passphrase))
+        respond = self.process.stdout.read(1)
+        if respond == CPR_REDO:print("WARNING - replacing older keys")
+        key_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
+        return self.process.stdout.read(key_len)
+    
+    def setkey(self, keydata:bytes, passphrase):
+        self.process.stdin.write(CPC_SETKEY+string_to_bytearray(passphrase)+\
+                                 int_to_bytes(len(keydata))+keydata)
+        respond = self.process.stdout.read(1)
+        if respond == CPR_REDO:print("WARNING - replacing public key")
+
+    def encrypt(self, data:bytes):
+        self.process.stdin.write(CPC_ENCRYPT+int_to_bytes(len(data))+data)
+        respond = self.process.stdout.read(1)
+        if respond == CPR_ER:print("ERROR - maybe no public key is set?");return
+        encrypted_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
+        return self.process.stdout.read(encrypted_len)
+    
+    def decrypt(self, data:bytes):
+        self.process.stdin.write(CPC_DECRYPT+int_to_bytes(len(data))+data)
+        respond = self.process.stdout.read(1)
+        if respond == CPR_ER:print("ERROR - maybe no key is generated?");return
+        decrypted_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
+        return self.process.stdout.read(decrypted_len)
+
+
+class ByteInterface:
+    def __init__(self, security:CPartner=None) -> None:
+        if security:
+            self.security = security
+            self.secure = True
+        else:
+            self.secure = False
+    
+    def secure_it(self, security):
+        self.security = security
+        self.secure = True
+
+    def sending_string(self, data):
+        if self.secure:return self.security.encrypt(bytes(data, encoding=ENCODING))
+        return bytes(data, encoding=ENCODING)
+
+    def sending_bytes(self, data):
+        if self.secure:return self.security.encrypt(data)
+        return data
+    
+    def received_string(self, data):
+        if self.secure:return str(self.security.decrypt(data), encoding=ENCODING)
+        return str(data, encoding=ENCODING)
+
+    def received_bytes(self, data):
+        if self.secure:return self.security.decrypt(data)
+        return data
+
+
+def read_protocol(other:socket, security:CPartner):
 
     def read_file():
         name_size = bytes_to_int(other.recv(NUM_SIZE))
-        name = str(other.recv(name_size), encoding=ENCODING)
+        name = interface.received_string(other.recv(name_size))
         file_size = bytes_to_int(other.recv(NUM_SIZE))
         bar = ProgressBar(file_size)
         print(f"--> downloading file {name} (size: {tell_size(file_size)})")
@@ -83,7 +161,7 @@ def read_protocol(other:socket):
             remaining = file_size
             while remaining:
                 chunk_time = currentTime()
-                chunk = other.recv(remaining)
+                chunk = interface.received_bytes(other.recv(remaining))
                 other_file.write(chunk)
                 remaining -= len(chunk)
                 bar.forward(len(chunk), currentTime()-chunk_time)
@@ -98,10 +176,12 @@ def read_protocol(other:socket):
 
     def read_txt():
         txt_size = bytes_to_int(other.recv(NUM_SIZE))
-        return f"[message]: {str(other.recv(txt_size), encoding=ENCODING)}"
+        return f"[message]: {interface.received_string(other.recv(txt_size))}"
         
-    operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory}
+    operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory,
+                 SC_FILE:read_file, SC_TXT:read_txt}
 
+    interface = ByteInterface(security)
     first_byte = safe_start_read(other)
     if not first_byte:print("[NO_READ] ... back to console");return
     try:print(operation[first_byte]())
@@ -121,11 +201,11 @@ def safe_start_read(connection:socket, many=1):
         return first_byte
 
 
-def send_protocol(other:socket, what, content):
+def send_protocol(other:socket, what, content, security:CPartner=None):       
 
     def send_file(name):
-        other.send(int_to_bytes(len(name)))
-        other.send(bytes(name, encoding=ENCODING))
+        sending_name = interface.sending_string(name)
+        other.sendall(int_to_bytes(len(sending_name)) + sending_name)
         
         # update: sending file loading bar
         with open(name, 'rb') as cargo:
@@ -136,14 +216,14 @@ def send_protocol(other:socket, what, content):
             # start reading chunks and report progress
             print(f"<-- upstreaming file {name} (size: {tell_size(cargo_size)})")
             cargo.seek(0, 0)
-            chunk = cargo.read(CHUNK_SIZE)
+            chunk = interface.sending_bytes(cargo.read(CHUNK_SIZE))
             bar = ProgressBar(cargo_size)
             starting_time = currentTime()
             while len(chunk) != 0:
                 chunk_time = currentTime()
                 other.sendall(chunk)
-                bar.forward(len(chunk), currentTime()-chunk_time)
-                chunk = cargo.read(CHUNK_SIZE)
+                bar.forward(CHUNK_SIZE, currentTime()-chunk_time)
+                chunk = interface.sending_bytes(cargo.read(CHUNK_SIZE))
                 print(bar, end='\r')
 
         print( f"\n---- upload done "
@@ -156,13 +236,15 @@ def send_protocol(other:socket, what, content):
         other.send(int_to_bytes(len(to_send)))
         for f in to_send:send_file(name + f)
 
-    def send_txt(message):
-        other.send(int_to_bytes(len(message)))
-        other.send(bytes(message, encoding=ENCODING))
+    def send_txt(content):
+        message = interface.sending_string(content)
+        other.sendall(int_to_bytes(len(message)) + message)
         return "(message sent)"
 
-    operation = {IS_FILE:send_file, IS_TXT:send_txt, IS_DIR:send_directory}
+    operation = {IS_FILE:send_file, IS_TXT:send_txt, IS_DIR:send_directory, 
+                 SC_FILE:send_file, SC_TXT:send_txt}
 
+    interface = ByteInterface(security)
     other.send(what)
     try:print(operation[what](content))
     except Exception as err:print(f"[SEND_ERR] {err}")
@@ -298,18 +380,33 @@ def udp_recivefile(main_channel:socket, port):
 
 # # # # # # # # # # # END # # # # # # # # # # # 
 
+def nothing():pass
+
+def secure_channel(other:socket) -> CPartner:
+    csecure = CPartner()
+    public_key = csecure.keygen(input("secret passphrase: "))
+    other.sendall(int_to_bytes(len(public_key)) + public_key)
+    other_key_len = bytes_to_int(other.recv(NUM_SIZE))
+    other_key = other.recv(other_key_len)
+    csecure.setkey(other_key, input("other secret passphrase: "))
+    return csecure
+
 
 def communication_loop(other:socket):
     signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
+    security = None
     while True:
         command = input("[here] enter a command (h for help): ")
         if   command in ['h', 'help']:print(HELP_MSG)
-        elif command in ['r', 'receive']:read_protocol(other)
+        elif command in ['r', 'receive']:read_protocol(other, security)
         elif command in ['ru', 'recive udp']:udp_recivefile(other, int(input("(port?)")))
         elif command in ['su', 'send udp']:udp_sendfile(input("(file name?)"), other, (input("(ip?)"), int(input("(port?)"))))
         elif command in ['sf', 'send file']:send_protocol(other, IS_FILE, input("(file name or address?)"))
         elif command in ['sd', 'send directory']:send_protocol(other, IS_DIR, input("(enter directory? or press enter for default temp)"))
         elif command in ['sx', 'send txt']:send_protocol(other, IS_TXT, input("(message?)"))
+        elif command in ['t', 'secure']:security = secure_channel(other)
+        elif command in ['xx', 'secret txt']:send_protocol(other, SC_TXT, input("(secret message?)"), security)
+        elif command in ['xf', 'secret file']:send_protocol(other, SC_FILE, input("(file name or address?)"), security)
         elif command in ['e', 'exit']:break
     print("communication's over see you next time")
     other.close()
