@@ -380,8 +380,6 @@ def udp_recivefile(main_channel:socket, port):
 
 # # # # # # # # # # # END # # # # # # # # # # # 
 
-def nothing():pass
-
 def secure_channel(other:socket) -> CPartner:
     csecure = CPartner()
     public_key = csecure.keygen(input("secret passphrase: "))
