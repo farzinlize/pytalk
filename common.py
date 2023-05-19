@@ -1,4 +1,5 @@
 import signal
+from time import sleep
 from socket import socket, AF_INET, SOCK_DGRAM
 from subprocess import Popen, PIPE
 from time import time as currentTime
@@ -21,11 +22,12 @@ IS_DIR = b'\x02'
 SC_TXT = b'\x03'
 SC_FILE = b'\x04'
 
-RUN_C_PARTNER = "csecure"
+RUN_C_PARTNER = "./csecure/build/cpartner"
 CPC_KEYGEN = b"G"
 CPC_SETKEY = b"S"
 CPC_ENCRYPT = b"C"
 CPC_DECRYPT = b"D"
+CPC_CLOSE = b'X'
 CPR_OK = b"O"
 CPR_REDO = b"R"
 CPR_ER = b"E"
@@ -88,24 +90,28 @@ def string_to_bytearray(arg:str) -> bytes:
 
 
 class CPartner:
-    def __init__(self) -> None:
-        self.process = Popen(RUN_C_PARTNER, stdin=PIPE, stdout=PIPE)
+    def __init__(self, custom_partner=None) -> None:
+        if custom_partner:self.process = Popen(custom_partner, stdin=PIPE, stdout=PIPE)
+        else             :self.process = Popen(RUN_C_PARTNER, stdin=PIPE, stdout=PIPE)
     
     def keygen(self, passphrase:str):
         self.process.stdin.write(CPC_KEYGEN+string_to_bytearray(passphrase))
+        self.process.stdin.flush()
         respond = self.process.stdout.read(1)
         if respond == CPR_REDO:print("WARNING - replacing older keys")
         key_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
         return self.process.stdout.read(key_len)
     
     def setkey(self, keydata:bytes, passphrase):
-        self.process.stdin.write(CPC_SETKEY+string_to_bytearray(passphrase)+\
-                                 int_to_bytes(len(keydata))+keydata)
+        self.process.stdin.write(CPC_SETKEY+int_to_bytes(len(keydata))+keydata+\
+                                 string_to_bytearray(passphrase))
+        self.process.stdin.flush()
         respond = self.process.stdout.read(1)
         if respond == CPR_REDO:print("WARNING - replacing public key")
 
     def encrypt(self, data:bytes):
         self.process.stdin.write(CPC_ENCRYPT+int_to_bytes(len(data))+data)
+        self.process.stdin.flush()
         respond = self.process.stdout.read(1)
         if respond == CPR_ER:print("ERROR - maybe no public key is set?");return
         encrypted_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
@@ -113,10 +119,28 @@ class CPartner:
     
     def decrypt(self, data:bytes):
         self.process.stdin.write(CPC_DECRYPT+int_to_bytes(len(data))+data)
+        self.process.stdin.flush()
         respond = self.process.stdout.read(1)
         if respond == CPR_ER:print("ERROR - maybe no key is generated?");return
         decrypted_len = bytes_to_int(self.process.stdout.read(NUM_SIZE))
         return self.process.stdout.read(decrypted_len)
+
+    def close(self):
+        self.process.stdin.write(CPC_CLOSE)
+        self.process.stdin.flush()
+        sleep(1)
+        status = self.process.poll()
+        if status is None:print("WARNING - still alive (use force kill)")
+        elif status != 0 :print(f"somthing wrong happend inside cpartner (exit code is {status})")
+    
+    def force_kill(self):
+        self.process.stdin.write(CPC_CLOSE)
+        self.process.stdin.flush()
+        status = self.process.poll()
+        if status is None:
+            print("use SIGKILL to terminate cpartner")
+            self.process.kill()
+        else:print(f"no killing is needed (exit code is {status})")
 
 
 class ByteInterface:
