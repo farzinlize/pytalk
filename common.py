@@ -205,7 +205,8 @@ def read_protocol(other:socket, security:CPartner):
     operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory,
                  SC_FILE:read_file, SC_TXT:read_txt}
 
-    interface = ByteInterface(security)
+    interface = ByteInterface()
+    if first_byte in [SC_FILE, SC_TXT]:interface.secure_it(security)
     first_byte = safe_start_read(other)
     if not first_byte:print("[NO_READ] ... back to console");return
     try:print(operation[first_byte]())
@@ -268,7 +269,8 @@ def send_protocol(other:socket, what, content, security:CPartner=None):
     operation = {IS_FILE:send_file, IS_TXT:send_txt, IS_DIR:send_directory, 
                  SC_FILE:send_file, SC_TXT:send_txt}
 
-    interface = ByteInterface(security)
+    interface = ByteInterface()
+    if what in [SC_FILE, SC_TXT]:interface.secure_it(security)
     other.send(what)
     try:print(operation[what](content))
     except Exception as err:print(f"[SEND_ERR] {err}")
