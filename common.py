@@ -205,9 +205,9 @@ def read_protocol(other:socket, security:CPartner):
     operation = {IS_FILE:read_file, IS_TXT:read_txt, IS_DIR:read_directory,
                  SC_FILE:read_file, SC_TXT:read_txt}
 
+    first_byte = safe_start_read(other)
     interface = ByteInterface()
     if first_byte in [SC_FILE, SC_TXT]:interface.secure_it(security)
-    first_byte = safe_start_read(other)
     if not first_byte:print("[NO_READ] ... back to console");return
     try:print(operation[first_byte]())
     except Exception as err:print("[READ_ERR]", {err})
@@ -433,4 +433,5 @@ def communication_loop(other:socket):
         elif command in ['xf', 'secret file']:send_protocol(other, SC_FILE, input("(file name or address?)"), security)
         elif command in ['e', 'exit']:break
     print("communication's over see you next time")
+    if security:security.close()
     other.close()
