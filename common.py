@@ -3,10 +3,9 @@ from time import sleep
 from socket import socket, AF_INET, SOCK_DGRAM
 from subprocess import Popen, PIPE
 from time import time as currentTime
-from time import strftime, gmtime
 import os
 
-CHUNK_SIZE = 500_000 # in bytes (500KB)
+CHUNK_SIZE = 50_000 # in bytes (50KB)
 UDP_CHUNK_SIZE = 10000
 MAXIMUM_SIZE_WAITLIST = 10000
 
