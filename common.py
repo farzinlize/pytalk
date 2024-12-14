@@ -33,12 +33,17 @@ CPR_ER = b"E"
 
 DEFAULT_DIRECTORY = 'temp/'
 
-HELP_MSG = "Talky program is here to help you communicate fast inside network with all you devices\n" \
+HELP_MSG = "Talky program is here to help you communicate fast and secure inside network with all devices\n" \
            "    list of commands:\n" \
-           "    * `e` or `exit` to end communication\n" \
            "    * `sf` or `send file` to send a file providing a file name or address\n" \
            "    * `sx` or `send txt` to send any text\n" \
-           "    * `r` or `receive` to wait for other end sending you something"
+           "    * `r` or `receive` to wait for other end sending you something\n"\
+           "    * `su` or `send udp` to send a file using UDP channel\n"\
+           "    * `ru` or `receive udp` to recieve file from UDP channel\n"\
+           "    * `t` or `secure` to secure communication with RSA encryption\n"\
+           "    * `xx` or `secret txt` to send secret text with encryption\n" \
+           "    * `xf` or `secret file` to encrypt and send a file\n" \
+           "    * `e` or `exit` to end communication" 
 
 def bytes_to_int(b :bytes):return int.from_bytes(b, 'big', signed=False)
 def int_to_bytes(i, int_size=NUM_SIZE, signed=False):return i.to_bytes(int_size, 'big', signed=False)
@@ -422,7 +427,7 @@ def communication_loop(other:socket):
         command = input("[here] enter a command (h for help): ")
         if   command in ['h', 'help']:print(HELP_MSG)
         elif command in ['r', 'receive']:read_protocol(other, security)
-        elif command in ['ru', 'recive udp']:udp_recivefile(other, int(input("(port?)")))
+        elif command in ['ru', 'receive udp']:udp_recivefile(other, int(input("(port?)")))
         elif command in ['su', 'send udp']:udp_sendfile(input("(file name?)"), other, (input("(ip?)"), int(input("(port?)"))))
         elif command in ['sf', 'send file']:send_protocol(other, IS_FILE, input("(file name or address?)"))
         elif command in ['sd', 'send directory']:send_protocol(other, IS_DIR, input("(enter directory? or press enter for default temp)"))
