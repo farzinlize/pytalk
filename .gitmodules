@@ -1,0 +1,3 @@
+[submodule "csecure"]
+	path = csecure
+	url = git@github:farzinlize/csecure.git
