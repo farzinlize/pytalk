@@ -219,14 +219,14 @@ def read_protocol(other:socket, security:CPartner):
 
 def safe_start_read(connection:socket, many=1):
     try:
-        signal.setitimer(signal.ITIMER_REAL, 1, 0)
+        if os.name != 'nt':signal.setitimer(signal.ITIMER_REAL, 1, 0)
         first_byte = connection.recv(many)
     except Exception as catch:
         if isinstance(catch, TimerException):print("[SAFE][TIMEOUT] nothing to read")
         else                                :print("[READ_ERR]", catch)
         return
     else:
-        signal.setitimer(signal.ITIMER_REAL, 0, 0)
+        if os.name != 'nt':signal.setitimer(signal.ITIMER_REAL, 0, 0)
         return first_byte
 
 
@@ -291,10 +291,10 @@ def udp_sendfile(filename, main_channel:socket, udp_address:tuple[str, int]):
 
     def ack_flush():
         while True:
-            signal.setitimer(signal.ITIMER_REAL, 0.5, 0)
+            if os.name != 'nt':signal.setitimer(signal.ITIMER_REAL, 0.5, 0)
             try:recived_ack = bytes_to_int(main_channel.recv(NUM_SIZE))
             except TimerException as _:return False
-            signal.setitimer(signal.ITIMER_REAL, 0, 0)
+            if os.name != 'nt':signal.setitimer(signal.ITIMER_REAL, 0, 0)
 
             # report ending or remove waitlist item
             if recived_ack == chunk_count:return True
@@ -421,7 +421,8 @@ def secure_channel(other:socket) -> CPartner:
 
 
 def communication_loop(other:socket):
-    signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
+    if os.name != 'nt':
+        signal.signal(signal.SIGALRM, lambda signum,frame:raise_function((signum,frame)))
     security = None
     while True:
         command = input("[here] enter a command (h for help): ")
